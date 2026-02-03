@@ -9,6 +9,7 @@ chunk_delay: 10000
 max_content_bytes: 180
 commands:
   - import: network_commands.yml
+  - import: secret_commands.yml
 
   - name: loki
     help: Ask Loki something
