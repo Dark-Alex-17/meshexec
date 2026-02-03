@@ -1,0 +1,36 @@
+device: /dev/ttyUSB0
+channel: 1
+baud: null
+shell: bash
+shell_args:
+  - -lc
+max_text_bytes: 200
+chunk_delay: 10000
+max_content_bytes: 180
+commands:
+  - import: network_commands.yml
+
+  - name: loki
+    help: Ask Loki something
+    args:
+      - name: question
+        help: Your prompt for Loki
+        greedy: true
+    command: loki "${question}"
+
+  - name: list-disk-space
+    help: List disk space for all mounted filesystems in a given *arr instance
+    args:
+      - name: servarr
+        help: The Managarr-supported servarr to hit
+    flags:
+      - long: --servarr-name
+        short: -s
+        arg: servarr_name
+        help: The name of the servarr instance as defined in the Managarr config
+    command: |
+      declare -a flags=()
+      if [[ -n $servarr_name ]]; then
+        flags+=("--servarr-name $servarr_name")
+      fi
+      managarr $servarr "${flags[@]}"

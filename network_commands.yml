@@ -1,0 +1,13 @@
+name: network
+help: Network commands for managing and querying network settings
+
+commands:
+  - name: myip
+    help: Show the current system's public IP address
+    command: curl -s checkip.amazonaws.com
+  - name: check-port
+    help: Check to see if the specified port is open or in use
+    args:
+      - name: port
+        help: The port number to check
+    command: 'sudo lsof -i :${port}'
