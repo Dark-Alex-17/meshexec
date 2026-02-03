@@ -60,3 +60,18 @@ impl From<LogLevel> for LevelFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn log_level_converts_to_level_filter() {
+        assert_eq!(LevelFilter::Off, LevelFilter::from(LogLevel::Off));
+        assert_eq!(LevelFilter::Error, LevelFilter::from(LogLevel::Error));
+        assert_eq!(LevelFilter::Warn, LevelFilter::from(LogLevel::Warn));
+        assert_eq!(LevelFilter::Info, LevelFilter::from(LogLevel::Info));
+        assert_eq!(LevelFilter::Debug, LevelFilter::from(LogLevel::Debug));
+        assert_eq!(LevelFilter::Trace, LevelFilter::from(LogLevel::Trace));
+    }
+}

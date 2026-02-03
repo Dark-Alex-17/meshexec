@@ -1,12 +1,9 @@
-mod cli;
-mod command;
-mod config;
-mod utils;
-
-use crate::cli::{Args, Commands};
-use crate::config::{Config, load_config};
-use crate::utils::{send_split_text, tail_logs, wait_for_my_node_num};
 use anyhow::{Context, Result};
+use automesh::cli::{Args, Commands};
+use automesh::command::{self, AliasResult};
+use automesh::config::{Config, load_config};
+use automesh::logging::{init_logging_config, tail_logs};
+use automesh::transport::{send_split_text, wait_for_my_node_num};
 use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
@@ -41,7 +38,7 @@ async fn main() -> Result<()> {
         panic_hook(info);
     }));
     let args = Args::parse();
-    log4rs::init_config(utils::init_logging_config(args.global.log_level))?;
+    log4rs::init_config(init_logging_config(args.global.log_level))?;
     let default_config_file = PathBuf::from(DEFAULT_CONFIG_FILENAME);
     let config = load_config(
         args.global
@@ -142,11 +139,11 @@ async fn start_runner_server(server_config: Config) -> Result<()> {
                 }
 
                 let (resolved, alias_env) = match command::resolve_alias(message, &server_config.commands) {
-                    Ok(command::AliasResult::HelpText(text)) => {
+                    Ok(AliasResult::HelpText(text)) => {
                         send_split_text(&mut api, &mut router, &text, &server_config).await?;
                         continue;
                     }
-                    Ok(command::AliasResult::Command { command, env }) => (command, env),
+                    Ok(AliasResult::Command { command, env }) => (command, env),
                     Err(e) => {
                         warn!("Alias error: {e}");
                         send_split_text(&mut api, &mut router, &e.to_string(), &server_config).await?;

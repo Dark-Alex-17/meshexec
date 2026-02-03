@@ -1,25 +1,15 @@
-use crate::cli::LogLevel;
 use crate::config::Config;
-use anyhow::{Context, Result, anyhow};
-use colored::Colorize;
-use log::{LevelFilter, error, info};
-use log4rs::append::console::ConsoleAppender;
-use log4rs::append::file::FileAppender;
-use log4rs::config::{Appender, Logger, Root};
-use log4rs::encode::pattern::PatternEncoder;
+use anyhow::{Result, anyhow};
+use log::{error, info};
 use meshtastic::api::ConnectedStreamApi;
 use meshtastic::api::state::Configured;
 use meshtastic::packet::{PacketDestination, PacketReceiver, PacketRouter};
 use meshtastic::protobufs::from_radio;
 use meshtastic::types::MeshChannel;
-use regex::Regex;
 use std::error::Error;
 use std::fmt::Display;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
-use std::path::PathBuf;
+use std::mem;
 use std::time::Duration;
-use std::{fs, mem};
 use tokio::time::{sleep, timeout};
 
 pub async fn wait_for_my_node_num(rx: &mut PacketReceiver) -> Result<u32> {
@@ -158,105 +148,132 @@ where
     Ok(())
 }
 
-pub fn get_log_path() -> PathBuf {
-    let mut log_path = if cfg!(target_os = "linux") {
-        dirs_next::cache_dir().unwrap_or_else(|| PathBuf::from("~/.cache"))
-    } else if cfg!(target_os = "macos") {
-        dirs_next::home_dir().unwrap().join("Library/Logs")
-    } else {
-        dirs_next::data_local_dir().unwrap_or_else(|| PathBuf::from("C:\\Logs"))
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
 
-    log_path.push("automesh");
-
-    if let Err(e) = fs::create_dir_all(&log_path) {
-        eprintln!("Failed to create log directory: {e:?}");
+    #[test]
+    fn chunk_empty_string_returns_empty_vec() {
+        let chunks = chunk_lines_with_footer("", 10);
+        assert!(chunks.is_empty());
     }
 
-    log_path.push("automesh.log");
-    log_path
-}
+    #[test]
+    fn chunk_single_short_line_within_budget_no_footer() {
+        let text = "hello";
+        let chunks = chunk_lines_with_footer(text, 10);
+        assert_eq!(chunks, vec![text.to_string()]);
+    }
 
-pub fn init_logging_config(log_level: LogLevel) -> log4rs::Config {
-    let encoder = Box::new(PatternEncoder::new(
-        "{d(%Y-%m-%d %H:%M:%S%.3f)(utc)} <{i}> [{l}] {f}:{L} - {m}{n}",
-    ));
-    let logfile = FileAppender::builder()
-        .encoder(encoder.clone())
-        .build(get_log_path())
-        .unwrap();
-    let stdout = ConsoleAppender::builder().encoder(encoder.clone()).build();
+    #[test]
+    fn chunk_two_lines_fit_in_one_chunk_no_footer() {
+        let text = "alpha\nbeta\n";
+        let chunks = chunk_lines_with_footer(text, 100);
+        assert_eq!(chunks, vec![text.to_string()]);
+    }
 
-    log4rs::Config::builder()
-        .appender(Appender::builder().build("logfile", Box::new(logfile)))
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .logger(Logger::builder().build("meshtastic::connections::stream_buffer", LevelFilter::Off))
-        .build(
-            Root::builder()
-                .appender("logfile")
-                .appender("stdout")
-                .build(log_level.into()),
-        )
-        .unwrap()
-}
+    #[test]
+    fn chunk_two_lines_split_with_footers() {
+        let text = "1234567\nabcdefg\n";
+        let chunks = chunk_lines_with_footer(text, 15);
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].starts_with("1234567\n"));
+        assert!(chunks[0].ends_with("[1/2]"));
+        assert!(chunks[1].starts_with("abcdefg\n"));
+        assert!(chunks[1].ends_with("[2/2]"));
+    }
 
-pub async fn tail_logs(no_color: bool) -> Result<()> {
-    let re = Regex::new(
-        r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+<(?P<opid>[^\s>]+)>\s+\[(?P<level>[A-Z]+)]\s+(?P<logger>[^:]+):(?P<line>\d+)\s+-\s+(?P<message>.*)$",
-    )?;
-    let file_path = get_log_path();
-    let file = File::open(&file_path).expect("Cannot open file");
-    let mut reader = BufReader::new(file);
+    #[test]
+    fn chunk_single_long_line_truncates_to_max_bytes() {
+        let text = "abcdefghij";
+        let chunks = chunk_lines_with_footer(text, 5);
+        assert_eq!(chunks, vec!["abcde".to_string()]);
+    }
 
-    reader
-        .seek(SeekFrom::End(0))
-        .with_context(|| "Unable to tail log file")?;
+    #[test]
+    fn chunk_footer_accounting_keeps_chunks_within_max_bytes() {
+        let text = "1234567\nabcdefg\n";
+        let max_bytes = 15;
+        let chunks = chunk_lines_with_footer(text, max_bytes);
+        for chunk in &chunks {
+            assert!(chunk.len() <= max_bytes);
+        }
+    }
 
-    let mut lines = reader.lines();
+    #[test]
+    fn chunk_respects_utf8_char_boundaries() {
+        let text = "héllo";
+        let chunks = chunk_lines_with_footer(text, 2);
+        assert_eq!(chunks, vec!["h".to_string()]);
+    }
 
-    tokio::spawn(async move {
-        loop {
-            if let Some(Ok(line)) = lines.next() {
-                if no_color {
-                    println!("{line}");
-                } else {
-                    let colored_line = colorize_log_line(&line, &re);
-                    println!("{colored_line}");
+    #[test]
+    fn chunk_handles_trailing_newline() {
+        let text = "hello\n";
+        let chunks = chunk_lines_with_footer(text, 100);
+        assert_eq!(chunks, vec![text.to_string()]);
+    }
+
+    #[test]
+    fn chunk_three_chunks_have_correct_footers() {
+        let text = "1234567\nabcdefg\nqwertyu\n";
+        let chunks = chunk_lines_with_footer(text, 15);
+        assert_eq!(chunks.len(), 3);
+        assert!(chunks[0].ends_with("[1/3]"));
+        assert!(chunks[1].ends_with("[2/3]"));
+        assert!(chunks[2].ends_with("[3/3]"));
+    }
+
+    #[test]
+    fn chunk_max_bytes_one_still_works() {
+        let text = "ab";
+        let chunks = chunk_lines_with_footer(text, 1);
+        assert_eq!(chunks, vec!["a".to_string()]);
+    }
+
+    proptest! {
+        #[test]
+        fn chunk_output_never_exceeds_max_bytes(
+            text in "[ -~\n]{0,500}",
+            max_bytes in 10usize..256
+        ) {
+            let chunks = chunk_lines_with_footer(&text, max_bytes);
+            for chunk in &chunks {
+                prop_assert!(
+                    chunk.len() <= max_bytes,
+                    "chunk len {} exceeded max_bytes {}: {:?}",
+                    chunk.len(), max_bytes, chunk
+                );
+            }
+        }
+
+        #[test]
+        fn chunk_preserves_all_content_when_single_chunk(
+            text in "[a-z]{1,50}"
+        ) {
+            let chunks = chunk_lines_with_footer(&text, 1000);
+            prop_assert_eq!(chunks.len(), 1);
+            prop_assert_eq!(&chunks[0], &text);
+        }
+
+        #[test]
+        fn chunk_count_footer_format(
+            text in "[a-z ]{20,200}\n[a-z ]{20,200}\n",
+            max_bytes in 20usize..60
+        ) {
+            let chunks = chunk_lines_with_footer(&text, max_bytes);
+            let total = chunks.len();
+            if total > 1 {
+                for (i, chunk) in chunks.iter().enumerate() {
+                    let expected_footer = format!("[{}/{}]", i + 1, total);
+                    prop_assert!(
+                        chunk.ends_with(&expected_footer),
+                        "chunk {} missing footer: {:?}",
+                        i, chunk
+                    );
                 }
             }
         }
-    })
-    .await?
-}
-
-fn colorize_log_line(line: &str, re: &Regex) -> String {
-    if let Some(caps) = re.captures(line) {
-        let level = &caps["level"];
-        let message = &caps["message"];
-
-        let colored_message = match level {
-            "ERROR" => message.red(),
-            "WARN" => message.yellow(),
-            "INFO" => message.green(),
-            "DEBUG" => message.blue(),
-            _ => message.normal(),
-        };
-
-        let timestamp = &caps["timestamp"];
-        let opid = &caps["opid"];
-        let logger = &caps["logger"];
-        let line_number = &caps["line"];
-
-        format!(
-            "{} <{}> [{}] {}:{} - {}",
-            timestamp.white(),
-            opid.cyan(),
-            level.bold(),
-            logger.magenta(),
-            line_number.bold(),
-            colored_message
-        )
-    } else {
-        line.to_string()
     }
 }

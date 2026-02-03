@@ -356,3 +356,756 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 
     Ok(config)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn leaf_cmd(name: &str, command: &str) -> Command {
+        Command {
+            name: name.to_string(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: command.to_string(),
+            commands: vec![],
+        }
+    }
+
+    fn valid_config() -> Config {
+        Config {
+            device: "/dev/ttyUSB0".into(),
+            channel: 1,
+            baud: None,
+            shell: "bash".into(),
+            shell_args: vec!["-lc".into()],
+            max_text_bytes: 200,
+            chunk_delay: 10000,
+            max_content_bytes: 180,
+            commands: vec![leaf_cmd("test", "echo hello")],
+        }
+    }
+
+    fn valid_config_yaml() -> String {
+        indoc::indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - name: test
+                command: echo hello
+        "}
+        .to_string()
+    }
+
+    #[test]
+    fn arg_valid_no_default() {
+        let arg = Arg {
+            name: "file".into(),
+            help: "path to file".into(),
+            default: None,
+            greedy: false,
+        };
+        assert!(arg.validate().is_ok());
+    }
+
+    #[test]
+    fn arg_valid_non_empty_default() {
+        let arg = Arg {
+            name: "file".into(),
+            help: "path to file".into(),
+            default: Some("default.txt".into()),
+            greedy: false,
+        };
+        assert!(arg.validate().is_ok());
+    }
+
+    #[test]
+    fn arg_empty_default_fails() {
+        let arg = Arg {
+            name: "file".into(),
+            help: "path to file".into(),
+            default: Some(String::new()),
+            greedy: false,
+        };
+        let err = arg.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("Default values in arguments cannot be empty"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn flag_valid_long_only() {
+        let flag = Flag {
+            long: "--foo".into(),
+            short: None,
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: false,
+        };
+        assert!(flag.validate().is_ok());
+    }
+
+    #[test]
+    fn flag_valid_long_and_short() {
+        let flag = Flag {
+            long: "--foo".into(),
+            short: Some("-f".into()),
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: false,
+        };
+        assert!(flag.validate().is_ok());
+    }
+
+    #[test]
+    fn flag_invalid_long_no_dashes() {
+        let flag = Flag {
+            long: "foo".into(),
+            short: None,
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: false,
+        };
+        let err = flag.validate().unwrap_err().to_string();
+        assert!(err.contains("Invalid long flag"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn flag_invalid_long_special_chars() {
+        let flag = Flag {
+            long: "--foo@bar".into(),
+            short: None,
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: false,
+        };
+        let err = flag.validate().unwrap_err().to_string();
+        assert!(err.contains("Invalid long flag"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn flag_invalid_short_too_long() {
+        let flag = Flag {
+            long: "--foo".into(),
+            short: Some("-foo".into()),
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: false,
+        };
+        let err = flag.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("Invalid short flag"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn flag_invalid_short_double_dash() {
+        let flag = Flag {
+            long: "--foo".into(),
+            short: Some("--f".into()),
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: false,
+        };
+        let err = flag.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("Invalid short flag"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn flag_greedy_without_arg_fails() {
+        let flag = Flag {
+            long: "--items".into(),
+            short: None,
+            help: None,
+            arg: None,
+            required: false,
+            default: None,
+            greedy: true,
+        };
+        let err = flag.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("must have an 'arg' field"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn flag_greedy_with_arg_ok() {
+        let flag = Flag {
+            long: "--items".into(),
+            short: None,
+            help: None,
+            arg: Some("ITEM".into()),
+            required: false,
+            default: None,
+            greedy: true,
+        };
+        assert!(flag.validate().is_ok());
+    }
+
+    #[test]
+    fn command_empty_name_fails() {
+        let cmd = Command {
+            name: String::new(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: "echo hi".into(),
+            commands: vec![],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(err.contains("cannot be empty"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn command_both_command_and_commands_fails() {
+        let cmd = Command {
+            name: "mixed".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: "echo hi".into(),
+            commands: vec![leaf_cmd("sub", "echo sub")],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(err.contains("cannot have both"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn command_neither_command_nor_commands_fails() {
+        let cmd = Command {
+            name: "empty".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: String::new(),
+            commands: vec![],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(err.contains("must have either"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn group_command_with_args_fails() {
+        let cmd = Command {
+            name: "group".into(),
+            help: String::new(),
+            args: vec![Arg {
+                name: "a".into(),
+                help: String::new(),
+                default: None,
+                greedy: false,
+            }],
+            flags: vec![],
+            command: String::new(),
+            commands: vec![leaf_cmd("sub", "echo sub")],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("group commands cannot have args or flags"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn group_command_with_flags_fails() {
+        let cmd = Command {
+            name: "group".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![Flag {
+                long: "--verbose".into(),
+                short: None,
+                help: None,
+                arg: None,
+                required: false,
+                default: None,
+                greedy: false,
+            }],
+            command: String::new(),
+            commands: vec![leaf_cmd("sub", "echo sub")],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("group commands cannot have args or flags"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn valid_leaf_command() {
+        let cmd = leaf_cmd("run", "echo run");
+        assert!(cmd.validate().is_ok());
+    }
+
+    #[test]
+    fn valid_group_command() {
+        let cmd = Command {
+            name: "group".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: String::new(),
+            commands: vec![leaf_cmd("sub", "echo sub")],
+        };
+        assert!(cmd.validate().is_ok());
+    }
+
+    #[test]
+    fn more_than_one_greedy_arg_fails() {
+        let cmd = Command {
+            name: "multi".into(),
+            help: String::new(),
+            args: vec![
+                Arg {
+                    name: "a".into(),
+                    help: String::new(),
+                    default: None,
+                    greedy: true,
+                },
+                Arg {
+                    name: "b".into(),
+                    help: String::new(),
+                    default: None,
+                    greedy: true,
+                },
+            ],
+            flags: vec![],
+            command: "echo hi".into(),
+            commands: vec![],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("only one arg or flag can be greedy"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn greedy_arg_not_last_fails() {
+        let cmd = Command {
+            name: "order".into(),
+            help: String::new(),
+            args: vec![
+                Arg {
+                    name: "first".into(),
+                    help: String::new(),
+                    default: None,
+                    greedy: true,
+                },
+                Arg {
+                    name: "second".into(),
+                    help: String::new(),
+                    default: None,
+                    greedy: false,
+                },
+            ],
+            flags: vec![],
+            command: "echo hi".into(),
+            commands: vec![],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("greedy arg must be the last arg"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn greedy_flag_not_last_fails() {
+        let cmd = Command {
+            name: "order".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![
+                Flag {
+                    long: "--first".into(),
+                    short: None,
+                    help: None,
+                    arg: Some("X".into()),
+                    required: false,
+                    default: None,
+                    greedy: true,
+                },
+                Flag {
+                    long: "--second".into(),
+                    short: None,
+                    help: None,
+                    arg: None,
+                    required: false,
+                    default: None,
+                    greedy: false,
+                },
+            ],
+            command: "echo hi".into(),
+            commands: vec![],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("greedy flag must be the last flag"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn one_greedy_arg_last_ok() {
+        let cmd = Command {
+            name: "ok".into(),
+            help: String::new(),
+            args: vec![
+                Arg {
+                    name: "first".into(),
+                    help: String::new(),
+                    default: None,
+                    greedy: false,
+                },
+                Arg {
+                    name: "rest".into(),
+                    help: String::new(),
+                    default: None,
+                    greedy: true,
+                },
+            ],
+            flags: vec![],
+            command: "echo hi".into(),
+            commands: vec![],
+        };
+        assert!(cmd.validate().is_ok());
+    }
+
+    #[test]
+    fn one_greedy_flag_last_ok() {
+        let cmd = Command {
+            name: "ok".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![
+                Flag {
+                    long: "--normal".into(),
+                    short: None,
+                    help: None,
+                    arg: None,
+                    required: false,
+                    default: None,
+                    greedy: false,
+                },
+                Flag {
+                    long: "--rest".into(),
+                    short: None,
+                    help: None,
+                    arg: Some("X".into()),
+                    required: false,
+                    default: None,
+                    greedy: true,
+                },
+            ],
+            command: "echo hi".into(),
+            commands: vec![],
+        };
+        assert!(cmd.validate().is_ok());
+    }
+
+    #[test]
+    fn recursive_group_validates_subcommands() {
+        let cmd = Command {
+            name: "parent".into(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: String::new(),
+            commands: vec![Command {
+                name: String::new(),
+                help: String::new(),
+                args: vec![],
+                flags: vec![],
+                command: "echo x".into(),
+                commands: vec![],
+            }],
+        };
+        let err = cmd.validate().unwrap_err().to_string();
+        assert!(err.contains("cannot be empty"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn config_empty_commands_fails() {
+        let mut cfg = valid_config();
+        cfg.commands.clear();
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("At least one command"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn config_valid_commands_ok() {
+        assert!(valid_config().validate().is_ok());
+    }
+
+    #[test]
+    fn config_validates_nested_command() {
+        let mut cfg = valid_config();
+        cfg.commands.push(Command {
+            name: String::new(),
+            help: String::new(),
+            args: vec![],
+            flags: vec![],
+            command: "echo x".into(),
+            commands: vec![],
+        });
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn load_valid_yaml_config() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("config.yaml"), valid_config_yaml()).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.device, "/dev/ttyUSB0");
+        assert_eq!(config.channel, 1);
+        assert!(config.baud.is_none());
+        assert_eq!(config.shell, "bash");
+        assert_eq!(config.shell_args, vec!["-lc"]);
+        assert_eq!(config.max_text_bytes, 200);
+        assert_eq!(config.chunk_delay, 10000);
+        assert_eq!(config.max_content_bytes, 180);
+        assert_eq!(config.commands.len(), 1);
+        assert_eq!(config.commands[0].name, "test");
+    }
+
+    #[test]
+    fn load_config_with_inline_commands() {
+        let dir = TempDir::new().unwrap();
+        let yaml = indoc::indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - name: alpha
+                command: echo alpha
+              - name: beta
+                command: echo beta
+        "};
+        fs::write(dir.path().join("config.yaml"), yaml).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.commands.len(), 2);
+        assert_eq!(config.commands[0].name, "alpha");
+        assert_eq!(config.commands[1].name, "beta");
+    }
+
+    #[test]
+    fn load_config_with_import() {
+        let dir = TempDir::new().unwrap();
+
+        let imported = indoc::indoc! {"
+            - name: imported_cmd
+              command: echo imported
+        "};
+        fs::write(dir.path().join("extra.yaml"), imported).unwrap();
+
+        let main = indoc::indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: extra.yaml
+              - name: inline
+                command: echo inline
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.commands.len(), 2);
+        assert_eq!(config.commands[0].name, "imported_cmd");
+        assert_eq!(config.commands[1].name, "inline");
+    }
+
+    #[test]
+    fn circular_import_detected() {
+        let dir = TempDir::new().unwrap();
+
+        let a = indoc::indoc! {"
+            - import: b.yaml
+        "};
+        let b = indoc::indoc! {"
+            - import: a.yaml
+        "};
+        fs::write(dir.path().join("a.yaml"), a).unwrap();
+        fs::write(dir.path().join("b.yaml"), b).unwrap();
+
+        let main = indoc::indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: a.yaml
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let mut loader = ConfigLoader::new(dir.path());
+        let err = loader.load("config.yaml").unwrap_err().to_string();
+        assert!(err.contains("Circular import"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn missing_import_file_fails() {
+        let dir = TempDir::new().unwrap();
+
+        let main = indoc::indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: nonexistent.yaml
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let err = load_config(dir.path().join("config"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("Failed to read file"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn invalid_yaml_fails() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("config.yaml"), "{{{{not yaml!!!!").unwrap();
+
+        let mut loader = ConfigLoader::new(dir.path());
+        let err = loader.load("config.yaml").unwrap_err().to_string();
+        assert!(
+            err.contains("Failed to parse YAML"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn load_config_falls_back_to_yml() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("config.yml"), valid_config_yaml()).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.device, "/dev/ttyUSB0");
+        assert_eq!(config.commands.len(), 1);
+    }
+
+    #[test]
+    fn import_single_command_object() {
+        let dir = TempDir::new().unwrap();
+
+        let single = indoc::indoc! {"
+            name: solo
+            command: echo solo
+        "};
+        fs::write(dir.path().join("solo.yaml"), single).unwrap();
+
+        let main = indoc::indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: solo.yaml
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.commands.len(), 1);
+        assert_eq!(config.commands[0].name, "solo");
+    }
+
+    #[test]
+    fn display_file_not_found_contains_path() {
+        let err = ConfigError::FileNotFound(
+            PathBuf::from("/some/missing/file.yaml"),
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/some/missing/file.yaml"),
+            "unexpected display: {msg}"
+        );
+    }
+
+    #[test]
+    fn display_parse_error_contains_path() {
+        let yaml_err = serde_yaml::from_str::<RawConfig>("{{bad").unwrap_err();
+        let err = ConfigError::ParseError(PathBuf::from("/bad/config.yaml"), yaml_err);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/bad/config.yaml"),
+            "unexpected display: {msg}"
+        );
+    }
+
+    #[test]
+    fn display_circular_import_contains_path() {
+        let err = ConfigError::CircularImport(PathBuf::from("/a/b/loop.yaml"));
+        let msg = err.to_string();
+        assert!(msg.contains("/a/b/loop.yaml"), "unexpected display: {msg}");
+    }
+
+    #[test]
+    fn display_validation_error_contains_message() {
+        let err = ConfigError::ValidationError("something went wrong".into());
+        let msg = err.to_string();
+        assert!(
+            msg.contains("something went wrong"),
+            "unexpected display: {msg}"
+        );
+    }
+}
