@@ -71,7 +71,11 @@ MeshExec has two subcommands:
 Starts the runner server that listens for commands on the mesh network:
 
 ```shell
+# Config file 'config.yml' is in current directory
 meshexec serve
+
+# Config file 'config.yml' is in another directory
+meshexec --config-file /opt/meshexec/config.yml serve
 ```
 
 ### `meshexec tail-logs`
@@ -103,7 +107,8 @@ Once MeshExec is running, send messages prefixed with `!` on the configured priv
 
 ## Configuration
 
-MeshExec is configured via a YAML file. By default, it looks for `config.yaml` (or `config.yml`) in the current directory. You can specify a different path with `--config-file`.
+MeshExec is configured via a YAML file. By default, it looks for `config.yaml` (or `config.yml`) in the current directory. 
+You can specify a different path with `--config-file`.
 
 ### Example Configuration
 
@@ -139,6 +144,7 @@ commands:
         arg: servarr_name
         help: The name of the servarr instance
     command: |
+      # Can define scripts inline
       declare -a flags=()
       if [[ -n $servarr_name ]]; then
         flags+=("--servarr-name $servarr_name")
@@ -146,7 +152,7 @@ commands:
       managarr $servarr "${flags[@]}"
 ```
 
-See the [examples/](examples/) directory for more sample configurations.
+See the [examples/](examples/) directory for a full configuration example (i.e. with subcommands).
 
 ### Configuration Reference
 
@@ -166,7 +172,8 @@ See the [examples/](examples/) directory for more sample configurations.
 
 #### Commands
 
-Commands can be either **leaf commands** (execute a shell command) or **group commands** (contain subcommands). They can also be imported from external YAML files.
+Commands can be either **leaf commands** (execute a shell command) or **group commands** (contain subcommands). They can 
+also be imported from external YAML files, enabling more complex configuration structures.
 
 ##### Leaf Command
 
@@ -189,6 +196,7 @@ Commands can be either **leaf commands** (execute a shell command) or **group co
 Group commands organize subcommands under a namespace:
 
 ```yaml
+# network_commands.yml
 - name: network
   help: Network commands
   commands:
@@ -207,7 +215,8 @@ Group commands organize subcommands under a namespace:
 | `help`     | `string`        | No              | Help text for the group |
 | `commands` | `list[Command]` | Yes (for group) | Nested subcommands      |
 
-A command **cannot** have both `command` and `commands` — it must be one or the other. Group commands **cannot** have `args` or `flags`.
+A command **cannot** have both `command` and `commands` — it must be one or the other. Group commands **cannot** have 
+`args` or `flags`.
 
 ##### Importing Commands
 
@@ -221,7 +230,8 @@ commands:
     command: echo "I'm defined inline"
 ```
 
-The imported file can contain either a single command object or a list of commands. Circular imports are detected and will produce an error.
+The imported file can contain either a single command object or a list of commands. Circular imports are detected and
+will produce an error.
 
 #### Args (Positional Arguments)
 
@@ -246,7 +256,8 @@ The imported file can contain either a single command object or a list of comman
 
 #### Greedy Behavior
 
-Only **one** arg or flag in a command can be greedy, and it must be the **last** in its respective list. A greedy arg/flag consumes all remaining whitespace-separated tokens as a single value. This is useful for free-text inputs:
+Only **one** arg or flag in a command can be greedy, and it must be the **last** in its respective list. A greedy 
+arg/flag consumes all remaining whitespace-separated tokens as a single value. This is useful for free-text inputs:
 
 ```yaml
 - name: ask
