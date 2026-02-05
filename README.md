@@ -22,8 +22,8 @@ access isn't available.
 ## Screenshots
 
 ![chat](./screenshots/meshexec-chat.png)
-![config](./screenshots/meshexec-daemon.png)
-![logs](./screenshots/meshexec-logs.png)
+![config](./screenshots/meshexec-docker-config.png)
+![logs](./screenshots/meshexec-daemon.png)
 
 ## Prerequisites
 
