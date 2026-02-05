@@ -158,8 +158,19 @@ mod tests {
   #[test]
   fn get_log_path_has_expected_suffix_and_is_absolute() {
     let path = get_log_path();
-    let path_str = path.to_string_lossy();
-    assert!(path_str.ends_with("meshexec/meshexec.log"));
+    let components: Vec<_> = path.components().collect();
+    let len = components.len();
+    assert!(len >= 2);
+    assert_eq!(
+      components[len - 2].as_os_str(),
+      "meshexec",
+      "Expected parent directory to be 'meshexec'"
+    );
+    assert_eq!(
+      components[len - 1].as_os_str(),
+      "meshexec.log",
+      "Expected file name to be 'meshexec.log'"
+    );
     assert!(path.is_absolute());
   }
 }
