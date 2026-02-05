@@ -126,86 +126,6 @@ jobs:
             echo "No changes to commit (already at $VERSION)"
           fi
 
-      - name: Bump validate_theme_derive/Cargo.toml version
-        shell: bash
-        working-directory: ${{ github.workspace }}/proc_macros/validate_theme_derive
-        env:
-          VERSION: ${{ env.version }}
-        run: |
-          set -euo pipefail
-          : "${VERSION:?env.version is empty}"
-
-          # Ignore Act's local artifact dir noise
-          echo artifacts/ >> .git/info/exclude || true
-
-          # Edit the version line right after name="meshexec"
-          sed -E -i '
-            /^[[:space:]]*name[[:space:]]*=[[:space:]]*"meshexec"[[:space:]]*$/ {
-              n
-              s|^[[:space:]]*version[[:space:]]*=[[:space:]]*"[^"]*"|version = "'"$VERSION"'"|
-            }
-          ' Cargo.toml
-
-          cargo update || true
-
-          # Git config that helps in containers (Act)
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-          # Debug: show what changed
-          git status --porcelain
-          git diff --name-only -- Cargo.toml || true
-
-          # Only commit if one of these files actually changed
-          if ! git diff --quiet -- Cargo.toml; then
-            # Stage only modifications of already tracked files (won't pick up artifacts/)
-            git add -u -- Cargo.toml
-            git commit -m "chore: bump validate_theme_derive Cargo.toml to $VERSION"
-          else
-            echo "No changes to commit (already at $VERSION)"
-          fi
-
-      - name: Bump enum_display_style_derive/Cargo.toml version
-        shell: bash
-        working-directory: ${{ github.workspace }}/proc_macros/enum_display_style_derive
-        env:
-          VERSION: ${{ env.version }}
-        run: |
-          set -euo pipefail
-          : "${VERSION:?env.version is empty}"
-
-          # Ignore Act's local artifact dir noise
-          echo artifacts/ >> .git/info/exclude || true
-
-          # Edit the version line right after name="meshexec"
-          sed -E -i '
-            /^[[:space:]]*name[[:space:]]*=[[:space:]]*"meshexec"[[:space:]]*$/ {
-              n
-              s|^[[:space:]]*version[[:space:]]*=[[:space:]]*"[^"]*"|version = "'"$VERSION"'"|
-            }
-          ' Cargo.toml
-
-          cargo update || true
-
-          # Git config that helps in containers (Act)
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-          # Debug: show what changed
-          git status --porcelain
-          git diff --name-only -- Cargo.toml || true
-
-          # Only commit if one of these files actually changed
-          if ! git diff --quiet -- Cargo.toml; then
-            # Stage only modifications of already tracked files (won't pick up artifacts/)
-            git add -u -- Cargo.toml
-            git commit -m "chore: bump enum_display_style_derive Cargo.toml to $VERSION"
-          else
-            echo "No changes to commit (already at $VERSION)"
-          fi
-
       - name: Generate changelog for the version bump
         id: changelog
         run: |
@@ -231,8 +151,6 @@ jobs:
           path: |
             Cargo.toml
             Cargo.lock
-            proc_macros/validate_theme_derive/Cargo.toml
-            proc_macros/enum_display_style_derive/Cargo.toml
 
   build-release-artifacts:
     name: build-release
@@ -579,65 +497,6 @@ jobs:
           git add .
           git diff-index --quiet HEAD || git commit -am "Update formula for MeshExec release ${{ env.RELEASE_VERSION }}"
           git push https://$TOKEN@github.com/Dark-Alex-17/homebrew-meshexec.git
-
-  publish-docker-image:
-    needs: [publish-github-release]
-    name: Publishing Docker image to Docker Hub
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check if actor is repository owner
-        if: ${{ github.actor != github.repository_owner  && env.ACT != 'true' }}
-        run: |
-          echo "You are not authorized to run this workflow."
-          exit 1
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Get release artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Ensure repository is up-to-date
-        if: env.ACT != 'true'
-        run: |
-          git fetch --all
-          git pull
-
-      - name: Set version variable
-        run: |
-          version="$(cat artifacts/release-version)"
-          echo "version=$version" >> $GITHUB_ENV
-
-      - name: Validate release environment variables
-        run: |
-          echo "Release version: ${{ env.version }}"
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        if: env.ACT != 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Push to Docker Hub
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ env.ACT != 'true' }}
-          tags: darkalex17/meshexec:latest, darkalex17/meshexec:${{ env.version }}
 
   publish-crate:
     needs: publish-github-release
