@@ -1,0 +1,7 @@
+name: docker
+help: Execute docker subcommands
+
+commands:
+  - name: hello
+    help: Run the 'hello-world' docker container to verify that Docker is installed and working correctly.
+    command: docker run hello-world

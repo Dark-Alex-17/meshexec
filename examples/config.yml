@@ -8,8 +8,8 @@ max_text_bytes: 200
 chunk_delay: 10000
 max_content_bytes: 180
 commands:
-  - import: network_commands.yml
-  - import: secret_commands.yml
+  - import: subcommands/network_commands.yml
+  - import: subcommands/secret_commands.yml
 
   - name: loki
     help: Ask Loki something
@@ -30,6 +30,7 @@ commands:
         arg: servarr_name
         help: The name of the servarr instance as defined in the Managarr config
     command: |
+      # Can define scripts inline
       declare -a flags=()
       if [[ -n $servarr_name ]]; then
         flags+=("--servarr-name $servarr_name")

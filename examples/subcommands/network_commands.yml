@@ -2,6 +2,8 @@ name: network
 help: Network commands for managing and querying network settings
 
 commands:
+  - import: network_subcommands/docker_commands.yml
+
   - name: myip
     help: Show the current system's public IP address
     command: curl -s checkip.amazonaws.com

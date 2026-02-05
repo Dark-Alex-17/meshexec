@@ -169,7 +169,22 @@ impl Validate for Command {
 #[serde(untagged)]
 enum CommandEntry {
     Import { import: String },
-    Command(Command),
+    Command(RawCommand),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawCommand {
+    name: String,
+    #[serde(default)]
+    help: String,
+    #[serde(default)]
+    args: Vec<Arg>,
+    #[serde(default)]
+    flags: Vec<Flag>,
+    #[serde(default)]
+    command: String,
+    #[serde(default)]
+    commands: Vec<CommandEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -274,8 +289,9 @@ impl ConfigLoader {
                     let imported_commands = self.load_command_file(&import_path)?;
                     resolved.extend(imported_commands);
                 }
-                CommandEntry::Command(cmd) => {
-                    resolved.push(cmd.clone());
+                CommandEntry::Command(raw_cmd) => {
+                    let cmd = self.resolve_command(raw_cmd.clone(), current_file)?;
+                    resolved.push(cmd);
                 }
             }
         }
@@ -295,7 +311,8 @@ impl ConfigLoader {
         let content = fs::read_to_string(path)
             .map_err(|e| ConfigError::FileNotFound(path.to_path_buf(), e))?;
 
-        if let Ok(cmd) = serde_yaml::from_str::<Command>(&content) {
+        if let Ok(raw_cmd) = serde_yaml::from_str::<RawCommand>(&content) {
+            let cmd = self.resolve_command(raw_cmd, path)?;
             return Ok(vec![cmd]);
         }
 
@@ -303,6 +320,34 @@ impl ConfigLoader {
             .map_err(|e| ConfigError::ParseError(path.to_path_buf(), e))?;
 
         self.resolve_commands(&entries, path)
+    }
+
+    fn resolve_command(&mut self, raw: RawCommand, current_file: &Path) -> Result<Command> {
+        let parent_dir = current_file.parent().unwrap_or(Path::new("."));
+        let mut resolved_subcommands = Vec::new();
+
+        for entry in raw.commands {
+            match entry {
+                CommandEntry::Import { import } => {
+                    let import_path = parent_dir.join(&import);
+                    let imported = self.load_command_file(&import_path)?;
+                    resolved_subcommands.extend(imported);
+                }
+                CommandEntry::Command(sub_raw) => {
+                    let sub_cmd = self.resolve_command(sub_raw, current_file)?;
+                    resolved_subcommands.push(sub_cmd);
+                }
+            }
+        }
+
+        Ok(Command {
+            name: raw.name,
+            help: raw.help,
+            args: raw.args,
+            flags: raw.flags,
+            command: raw.command,
+            commands: resolved_subcommands,
+        })
     }
 }
 
@@ -361,6 +406,7 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config> {
 mod tests {
     use super::*;
     use std::fs;
+    use indoc::indoc;
     use tempfile::TempDir;
 
     fn leaf_cmd(name: &str, command: &str) -> Command {
@@ -389,7 +435,7 @@ mod tests {
     }
 
     fn valid_config_yaml() -> String {
-        indoc::indoc! {"
+        indoc! {"
             device: /dev/ttyUSB0
             channel: 1
             baud: null
@@ -902,7 +948,7 @@ mod tests {
     #[test]
     fn load_config_with_inline_commands() {
         let dir = TempDir::new().unwrap();
-        let yaml = indoc::indoc! {"
+        let yaml = indoc! {"
             device: /dev/ttyUSB0
             channel: 1
             baud: null
@@ -929,13 +975,13 @@ mod tests {
     fn load_config_with_import() {
         let dir = TempDir::new().unwrap();
 
-        let imported = indoc::indoc! {"
+        let imported = indoc! {"
             - name: imported_cmd
               command: echo imported
         "};
         fs::write(dir.path().join("extra.yaml"), imported).unwrap();
 
-        let main = indoc::indoc! {"
+        let main = indoc! {"
             device: /dev/ttyUSB0
             channel: 1
             baud: null
@@ -961,16 +1007,16 @@ mod tests {
     fn circular_import_detected() {
         let dir = TempDir::new().unwrap();
 
-        let a = indoc::indoc! {"
+        let a = indoc! {"
             - import: b.yaml
         "};
-        let b = indoc::indoc! {"
+        let b = indoc! {"
             - import: a.yaml
         "};
         fs::write(dir.path().join("a.yaml"), a).unwrap();
         fs::write(dir.path().join("b.yaml"), b).unwrap();
 
-        let main = indoc::indoc! {"
+        let main = indoc! {"
             device: /dev/ttyUSB0
             channel: 1
             baud: null
@@ -993,7 +1039,7 @@ mod tests {
     fn missing_import_file_fails() {
         let dir = TempDir::new().unwrap();
 
-        let main = indoc::indoc! {"
+        let main = indoc! {"
             device: /dev/ttyUSB0
             channel: 1
             baud: null
@@ -1043,13 +1089,13 @@ mod tests {
     fn import_single_command_object() {
         let dir = TempDir::new().unwrap();
 
-        let single = indoc::indoc! {"
+        let single = indoc! {"
             name: solo
             command: echo solo
         "};
         fs::write(dir.path().join("solo.yaml"), single).unwrap();
 
-        let main = indoc::indoc! {"
+        let main = indoc! {"
             device: /dev/ttyUSB0
             channel: 1
             baud: null
@@ -1066,6 +1112,130 @@ mod tests {
         let config = load_config(dir.path().join("config")).unwrap();
         assert_eq!(config.commands.len(), 1);
         assert_eq!(config.commands[0].name, "solo");
+    }
+
+    #[test]
+    fn nested_import_in_group_command() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir(dir.path().join("subcommands")).unwrap();
+
+        let subcommand = indoc! {"
+            name: inner
+            command: echo inner
+        "};
+        fs::write(dir.path().join("subcommands/inner.yaml"), subcommand).unwrap();
+
+        let group = indoc! {"
+            name: outer
+            help: Outer group
+            commands:
+              - import: subcommands/inner.yaml
+              - name: direct
+                command: echo direct
+        "};
+        fs::write(dir.path().join("group.yaml"), group).unwrap();
+
+        let main = indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: group.yaml
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.commands.len(), 1);
+        assert_eq!(config.commands[0].name, "outer");
+        assert_eq!(config.commands[0].commands.len(), 2);
+        assert_eq!(config.commands[0].commands[0].name, "inner");
+        assert_eq!(config.commands[0].commands[1].name, "direct");
+    }
+
+    #[test]
+    fn deeply_nested_imports() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir_all(dir.path().join("level1/level2")).unwrap();
+
+        let leaf = indoc! {"
+            name: leaf
+            command: echo leaf
+        "};
+        fs::write(dir.path().join("level1/level2/leaf.yaml"), leaf).unwrap();
+
+        let level2 = indoc! {"
+            name: level2
+            commands:
+              - import: level2/leaf.yaml
+        "};
+        fs::write(dir.path().join("level1/level2_group.yaml"), level2).unwrap();
+
+        let level1 = indoc! {"
+            name: level1
+            commands:
+              - import: level1/level2_group.yaml
+        "};
+        fs::write(dir.path().join("level1_group.yaml"), level1).unwrap();
+
+        let main = indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: level1_group.yaml
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let config = load_config(dir.path().join("config")).unwrap();
+        assert_eq!(config.commands[0].name, "level1");
+        assert_eq!(config.commands[0].commands[0].name, "level2");
+        assert_eq!(config.commands[0].commands[0].commands[0].name, "leaf");
+    }
+
+    #[test]
+    fn circular_import_in_nested_commands() {
+        let dir = TempDir::new().unwrap();
+
+        let group_a = indoc! {"
+            name: group_a
+            commands:
+              - import: group_b.yaml
+        "};
+        let group_b = indoc! {"
+            name: group_b
+            commands:
+              - import: group_a.yaml
+        "};
+        fs::write(dir.path().join("group_a.yaml"), group_a).unwrap();
+        fs::write(dir.path().join("group_b.yaml"), group_b).unwrap();
+
+        let main = indoc! {"
+            device: /dev/ttyUSB0
+            channel: 1
+            baud: null
+            shell: bash
+            shell_args: [\"-lc\"]
+            max_text_bytes: 200
+            chunk_delay: 10000
+            max_content_bytes: 180
+            commands:
+              - import: group_a.yaml
+        "};
+        fs::write(dir.path().join("config.yaml"), main).unwrap();
+
+        let mut loader = ConfigLoader::new(dir.path());
+        let err = loader.load("config.yaml").unwrap_err().to_string();
+        assert!(err.contains("Circular import"), "unexpected error: {err}");
     }
 
     #[test]
@@ -1106,6 +1276,35 @@ mod tests {
         assert!(
             msg.contains("something went wrong"),
             "unexpected display: {msg}"
+        );
+    }
+
+    #[test]
+    fn examples_config_loads_with_recursive_subcommands() {
+        let config = load_config("examples/config").unwrap();
+
+        let network = config
+            .commands
+            .iter()
+            .find(|c| c.name == "network")
+            .expect("network command not found");
+        assert!(!network.commands.is_empty(), "network should have subcommands");
+
+        let docker = network
+            .commands
+            .iter()
+            .find(|c| c.name == "docker")
+            .expect("docker subcommand not found under network");
+        assert!(!docker.commands.is_empty(), "docker should have subcommands");
+
+        let hello = docker
+            .commands
+            .iter()
+            .find(|c| c.name == "hello")
+            .expect("hello subcommand not found under docker");
+        assert!(
+            !hello.command.is_empty(),
+            "hello should be a leaf command with a command string"
         );
     }
 }

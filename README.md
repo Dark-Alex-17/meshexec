@@ -209,11 +209,11 @@ Group commands organize subcommands under a namespace:
       command: 'sudo lsof -i :${port}'
 ```
 
-| Field      | Type            | Required        | Description             |
-|------------|-----------------|-----------------|-------------------------|
-| `name`     | `string`        | Yes             | The group name          |
-| `help`     | `string`        | No              | Help text for the group |
-| `commands` | `list[Command]` | Yes (for group) | Nested subcommands      |
+| Field      | Type            | Required        | Description                                      |
+|------------|-----------------|-----------------|--------------------------------------------------|
+| `name`     | `string`        | Yes             | The group name                                   |
+| `help`     | `string`        | No              | Help text for the group                          |
+| `commands` | `list`          | Yes (for group) | Nested subcommands and/or imports (recursive)    |
 
 A command **cannot** have both `command` and `commands` — it must be one or the other. Group commands **cannot** have 
 `args` or `flags`.
@@ -232,6 +232,41 @@ commands:
 
 The imported file can contain either a single command object or a list of commands. Circular imports are detected and
 will produce an error.
+
+##### Nested Subcommand Imports
+
+Imports can also be used inside group commands, enabling deeply nested command hierarchies organized across multiple 
+files:
+
+```yaml
+---
+# config.yml
+commands:
+  - import: network_commands.yml
+
+---
+# network_commands.yml
+name: network
+help: Network commands
+commands:
+  - import: docker_commands.yml    # Imports can be nested inside groups
+  - name: myip
+    command: curl -s checkip.amazonaws.com
+
+---
+# docker_commands.yml
+name: docker
+help: Docker commands
+commands:
+  - name: hello
+    command: docker run hello-world
+```
+
+This creates a command hierarchy where you can run:
+- `!network myip` — Show public IP
+- `!network docker hello` — Run the Docker hello-world container
+
+Import paths are always relative to the file containing the import directive.
 
 #### Args (Positional Arguments)
 
