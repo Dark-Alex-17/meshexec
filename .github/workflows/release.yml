@@ -61,7 +61,7 @@ jobs:
 
       - name: Bump version with Commitizen
         run: |
-          cz bump --yes --increment ${{ github.event.inputs.bump_type }} --no-changelog
+          cz bump --yes --increment ${{ github.event.inputs.bump_type }}
 
       - name: Amend commit message to include '[skip ci]'
         run: |
