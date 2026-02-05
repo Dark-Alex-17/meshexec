@@ -21,7 +21,9 @@ fn no_subcommand_exits_with_error() {
 fn help_flag_shows_usage() {
     meshexec().arg("--help").assert().success().stdout(
         predicates::str::contains("meshexec")
-            .and(predicates::str::contains("Execute commands"))
+            .and(predicates::str::contains("aliases"))
+            .and(predicates::str::contains("execute"))
+            .and(predicates::str::contains("remotely"))
             .and(predicates::str::contains("serve"))
             .and(predicates::str::contains("tail-logs")),
     );
