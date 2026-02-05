@@ -1,0 +1,2 @@
+[keys.normal.backspace]
+l = ":sh zellij run -x '4%%' --width '92%%' -f -n Lint -- just lint"

@@ -1,0 +1,24 @@
+# Documentation: https://docs.brew.sh/Formula-Cookbook
+#                https://rubydoc.brew.sh/Formula
+class MeshExec < Formula
+  desc "Remote command execution over Meshtastic mesh networks"
+  homepage "https://github.com/Dark-Alex-17/meshexec"
+  if OS.mac? and Hardware::CPU.arm?
+    url "https://github.com/Dark-Alex-17/meshexec/releases/download/v$version/meshexec-macos-arm64.tar.gz"
+    sha256 "$hash_mac_arm"
+  elsif OS.mac? and Hardware::CPU.intel?
+    url "https://github.com/Dark-Alex-17/meshexec/releases/download/v$version/meshexec-macos.tar.gz"
+    sha256 "$hash_mac"
+  else
+    url "https://github.com/Dark-Alex-17/meshexec/releases/download/v$version/meshexec-linux-musl.tar.gz"
+    sha256 "$hash_linux"
+  end
+  version "$version"
+  license "MIT"
+
+  def install
+    bin.install "meshexec"
+    ohai "You're done!  Run with \"meshexec serve\""
+    ohai "For runtime flags, see \"meshexec --help\""
+  end
+end
