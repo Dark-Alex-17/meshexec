@@ -21,13 +21,13 @@ pub fn get_log_path() -> PathBuf {
         dirs_next::data_local_dir().unwrap_or_else(|| PathBuf::from("C:\\Logs"))
     };
 
-    log_path.push("automesh");
+    log_path.push("meshexec");
 
     if let Err(e) = fs::create_dir_all(&log_path) {
         eprintln!("Failed to create log directory: {e:?}");
     }
 
-    log_path.push("automesh.log");
+    log_path.push("meshexec.log");
     log_path
 }
 
@@ -159,7 +159,7 @@ mod tests {
     fn get_log_path_has_expected_suffix_and_is_absolute() {
         let path = get_log_path();
         let path_str = path.to_string_lossy();
-        assert!(path_str.ends_with("automesh/automesh.log"));
+        assert!(path_str.ends_with("meshexec/meshexec.log"));
         assert!(path.is_absolute());
     }
 }

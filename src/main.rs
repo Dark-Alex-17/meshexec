@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use automesh::cli::{Args, Commands};
-use automesh::command::{self, AliasResult};
-use automesh::config::{Config, load_config};
-use automesh::logging::{init_logging_config, tail_logs};
-use automesh::transport::{send_split_text, wait_for_my_node_num};
+use meshexec::cli::{Args, Commands};
+use meshexec::command::{self, AliasResult};
+use meshexec::config::{Config, load_config};
+use meshexec::logging::{init_logging_config, tail_logs};
+use meshexec::transport::{send_split_text, wait_for_my_node_num};
 use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};

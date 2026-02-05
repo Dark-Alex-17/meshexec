@@ -1,12 +1,12 @@
 [package]
-name = "automesh"
+name = "meshexec"
 version = "0.1.0"
 authors = ["Alex Clarke <alex.j.tusa@gmail.com>"]
-description = "Manage remote devices over the Meshtastic mesh — define command aliases, execute them remotely via private channels, and get output back in chunks"
+description = "Manage remote devices over the Meshtastic mesh. Define command aliases, execute them remotely via private channels, and get output back in chunks"
 keywords = ["meshtastic", "mesh-network", "remote-execution", "iot", "lora"]
-documentation = "https://github.com/Dark-Alex-17/automesh"
-repository = "https://github.com/Dark-Alex-17/automesh"
-homepage = "https://github.com/Dark-Alex-17/automesh"
+documentation = "https://github.com/Dark-Alex-17/meshexec"
+repository = "https://github.com/Dark-Alex-17/meshexec"
+homepage = "https://github.com/Dark-Alex-17/meshexec"
 readme = "README.md"
 license = "MIT"
 edition = "2024"

@@ -5,8 +5,8 @@ use log::LevelFilter;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "automesh",
-    about = "Execute commands on remote serially-connected nodes based on messages in a private channel"
+    name = "meshexec",
+    about = "Manage remote devices over the Meshtastic mesh. Define command aliases, execute them remotely via private channels, and get output back in chunks"
 )]
 pub struct Args {
     #[command(subcommand)]
@@ -19,10 +19,10 @@ pub struct Args {
 #[command(next_help_heading = "Global Options")]
 pub struct GlobalOpts {
     /// Specify the config file
-    #[arg(long, short, env = "AUTOMESH_CONFIG_FILE")]
+    #[arg(long, short, env = "MESHEXEC_CONFIG_FILE")]
     pub config_file: Option<PathBuf>,
     /// Specify the logging level
-    #[arg(long, short, value_enum, default_value_t = LogLevel::Info, env = "AUTOMESH_LOG_LEVEL")]
+    #[arg(long, short, value_enum, default_value_t = LogLevel::Info, env = "MESHEXEC_LOG_LEVEL")]
     pub log_level: LogLevel,
 }
 
