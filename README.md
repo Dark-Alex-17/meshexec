@@ -22,7 +22,7 @@ access isn't available.
 ## Screenshots
 
 ![chat](./screenshots/meshexec-chat.png)
-![config](./screenshots/meshexec-config.png)
+![config](./screenshots/meshexec-daemon.png)
 ![logs](./screenshots/meshexec-logs.png)
 
 ## Prerequisites
