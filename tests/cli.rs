@@ -25,7 +25,8 @@ fn help_flag_shows_usage() {
       .and(predicates::str::contains("execute"))
       .and(predicates::str::contains("remotely"))
       .and(predicates::str::contains("serve"))
-      .and(predicates::str::contains("tail-logs")),
+      .and(predicates::str::contains("tail-logs"))
+      .and(predicates::str::contains("config-path")),
   );
 }
 
@@ -129,4 +130,24 @@ fn tail_logs_fails_at_runtime_not_arg_parsing() {
     .assert()
     .failure()
     .stderr(predicates::str::contains("Usage").not());
+}
+
+#[test]
+fn config_path_help_shows_description() {
+  meshexec()
+    .args(["config-path", "--help"])
+    .assert()
+    .success()
+    .stdout(predicates::str::contains(
+      "Print the default config file path",
+    ));
+}
+
+#[test]
+fn config_path_succeeds_and_prints_path() {
+  meshexec()
+    .arg("config-path")
+    .assert()
+    .success()
+    .stdout(predicates::str::contains("meshexec").and(predicates::str::contains("config.yaml")));
 }

@@ -64,7 +64,7 @@ Binaries are available on the [releases](https://github.com/Dark-Alex-17/meshexe
 
 ## Usage
 
-MeshExec has two subcommands:
+MeshExec has three subcommands:
 
 ### `meshexec serve`
 Starts the runner server that listens for commands on the mesh network:
@@ -87,12 +87,24 @@ meshexec tail-logs
 meshexec tail-logs --no-color
 ```
 
+### `meshexec config-path`
+Prints the default configuration file path for your system:
+
+```shell
+meshexec config-path
+```
+
+This is useful for finding where to place your configuration file. The output varies by operating system:
+- **Linux**: `~/.config/meshexec/config.yaml`
+- **macOS**: `~/Library/Application Support/meshexec/config.yaml`
+- **Windows**: `C:\Users\<User>\AppData\Roaming\meshexec\config.yaml`
+
 ### Global Options
 
-| Flag                   | Short | Env Var                | Description                                                                       |
-|------------------------|-------|------------------------|-----------------------------------------------------------------------------------|
-| `--config-file <PATH>` | `-c`  | `MESHEXEC_CONFIG_FILE` | Specify the config file (defaults to `config.yaml` in the current directory)      |
-| `--log-level <LEVEL>`  | `-l`  | `MESHEXEC_LOG_LEVEL`   | Set the logging level: `off`, `error`, `warn`, `info` (default), `debug`, `trace` |
+| Flag                   | Short | Env Var                | Description                                                                                                           |
+|------------------------|-------|------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| `--config-file <PATH>` | `-c`  | `MESHEXEC_CONFIG_FILE` | Specify the config file (if not set, searches current directory then system config directory; see [Configuration File Location](#configuration-file-location)) |
+| `--log-level <LEVEL>`  | `-l`  | `MESHEXEC_LOG_LEVEL`   | Set the logging level: `off`, `error`, `warn`, `info` (default), `debug`, `trace`                                     |
 
 ### Sending Commands Over the Mesh
 Once MeshExec is running, send messages prefixed with `!` on the configured private channel from any node on the mesh:
@@ -106,8 +118,24 @@ Once MeshExec is running, send messages prefixed with `!` on the configured priv
 
 ## Configuration
 
-MeshExec is configured via a YAML file. By default, it looks for `config.yaml` (or `config.yml`) in the current directory. 
-You can specify a different path with `--config-file`.
+MeshExec is configured via a YAML file. You can specify an explicit path with `--config-file`, or let MeshExec 
+automatically find for a configuration file.
+
+### Configuration File Location
+
+MeshExec searches for a configuration file in the following order:
+
+1. **Explicit path**: If `--config-file` or `MESHEXEC_CONFIG_FILE` is set, that path is used directly
+2. **Current directory**: `./config.yaml` or `./config.yml`
+3. **System config directory**: The standard configuration directory for your operating system
+
+To find the system config directory for your platform, run:
+
+```shell
+meshexec config-path
+```
+
+If no configuration file is found in any of these locations, MeshExec will display an error listing all searched paths.
 
 ### Example Configuration
 

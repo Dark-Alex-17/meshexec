@@ -6,7 +6,7 @@ use indoc::formatdoc;
 use log::{debug, error, info, warn};
 use meshexec::cli::{Args, Commands};
 use meshexec::command::{self, AliasResult};
-use meshexec::config::{Config, load_config};
+use meshexec::config::{Config, find_config_file, load_config};
 use meshexec::logging::{init_logging_config, tail_logs};
 use meshexec::transport::{send_split_text, wait_for_my_node_num};
 use meshtastic::packet::PacketRouter;
@@ -21,7 +21,6 @@ use meshtastic::{
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::panic::PanicHookInfo;
-use std::path::PathBuf;
 use std::process::Command;
 use std::str::from_utf8;
 use std::sync::Arc;
@@ -30,8 +29,6 @@ use std::{env, io, panic, process};
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 
-static DEFAULT_CONFIG_FILENAME: &str = "config.yaml";
-
 #[tokio::main]
 async fn main() -> Result<()> {
   panic::set_hook(Box::new(|info| {
@@ -39,30 +36,40 @@ async fn main() -> Result<()> {
   }));
   let args = Args::parse();
   log4rs::init_config(init_logging_config(args.global.log_level))?;
-  let default_config_file = PathBuf::from(DEFAULT_CONFIG_FILENAME);
-  let config = load_config(
-    args
-      .global
-      .config_file
-      .as_deref()
-      .unwrap_or(&default_config_file),
-  )?;
-  debug!("Loaded config: {config:?}");
-  let running = Arc::new(AtomicBool::new(true));
-  let r = running.clone();
-
-  let cancellation_token = CancellationToken::new();
-  let ctrlc_cancellation_token = cancellation_token.clone();
-  ctrlc::set_handler(move || {
-    ctrlc_cancellation_token.cancel();
-    r.store(false, Ordering::SeqCst);
-    process::exit(1);
-  })
-  .expect("Error setting Ctrl-C handler");
 
   match args.command {
+    Commands::ConfigPath => {
+      let config_dir =
+        dirs_next::config_dir().expect("Could not determine config directory for this system");
+      println!(
+        "{}",
+        config_dir.join("meshexec").join("config.yaml").display()
+      );
+      return Ok(());
+    }
     Commands::TailLogs { no_color } => tail_logs(no_color).await?,
-    Commands::Serve => start_runner_server(config).await?,
+    Commands::Serve => {
+      let config_path = match args.global.config_file {
+        Some(path) => path,
+        None => find_config_file()?,
+      };
+      let config = load_config(&config_path)?;
+      debug!("Loaded config: {config:?}");
+
+      let running = Arc::new(AtomicBool::new(true));
+      let r = running.clone();
+
+      let cancellation_token = CancellationToken::new();
+      let ctrlc_cancellation_token = cancellation_token.clone();
+      ctrlc::set_handler(move || {
+        ctrlc_cancellation_token.cancel();
+        r.store(false, Ordering::SeqCst);
+        process::exit(1);
+      })
+      .expect("Error setting Ctrl-C handler");
+
+      start_runner_server(config).await?
+    }
   }
 
   Ok(())

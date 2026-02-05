@@ -357,6 +357,7 @@ pub enum ConfigError {
   ParseError(PathBuf, serde_yaml::Error),
   CircularImport(PathBuf),
   ValidationError(String),
+  ConfigNotFound(Vec<PathBuf>),
 }
 
 impl Display for ConfigError {
@@ -373,6 +374,17 @@ impl Display for ConfigError {
       }
       ConfigError::ValidationError(message) => {
         write!(f, "Validation failed: '{message}'")
+      }
+      ConfigError::ConfigNotFound(paths) => {
+        let searched: Vec<_> = paths
+          .iter()
+          .map(|p| format!("  - {}", p.display()))
+          .collect();
+        write!(
+          f,
+          "Config file not found. Searched locations:\n{}",
+          searched.join("\n")
+        )
       }
     }
   }
@@ -400,6 +412,40 @@ pub fn load_config(path: impl AsRef<Path>) -> Result<Config> {
   config.validate()?;
 
   Ok(config)
+}
+
+pub fn find_config_file() -> Result<PathBuf> {
+  let mut searched_paths = Vec::new();
+
+  let current_dir_yaml = PathBuf::from("config.yaml");
+  let current_dir_yml = PathBuf::from("config.yml");
+
+  if current_dir_yaml.exists() {
+    return Ok(current_dir_yaml);
+  }
+  searched_paths.push(current_dir_yaml);
+
+  if current_dir_yml.exists() {
+    return Ok(current_dir_yml);
+  }
+  searched_paths.push(current_dir_yml);
+
+  if let Some(config_dir) = dirs_next::config_dir() {
+    let xdg_yaml = config_dir.join("meshexec").join("config.yaml");
+    let xdg_yml = config_dir.join("meshexec").join("config.yml");
+
+    if xdg_yaml.exists() {
+      return Ok(xdg_yaml);
+    }
+    searched_paths.push(xdg_yaml);
+
+    if xdg_yml.exists() {
+      return Ok(xdg_yml);
+    }
+    searched_paths.push(xdg_yml);
+  }
+
+  Err(anyhow!(ConfigError::ConfigNotFound(searched_paths)))
 }
 
 #[cfg(test)]
@@ -1276,6 +1322,32 @@ mod tests {
     assert!(
       msg.contains("something went wrong"),
       "unexpected display: {msg}"
+    );
+  }
+
+  #[test]
+  fn display_config_not_found_lists_searched_paths() {
+    let err = ConfigError::ConfigNotFound(vec![
+      PathBuf::from("./config.yaml"),
+      PathBuf::from("./config.yml"),
+      PathBuf::from("/home/user/.config/meshexec/config.yaml"),
+    ]);
+    let msg = err.to_string();
+    assert!(
+      msg.contains("Config file not found"),
+      "unexpected display: {msg}"
+    );
+    assert!(
+      msg.contains("./config.yaml"),
+      "should list first searched path: {msg}"
+    );
+    assert!(
+      msg.contains("./config.yml"),
+      "should list second searched path: {msg}"
+    );
+    assert!(
+      msg.contains("/home/user/.config/meshexec/config.yaml"),
+      "should list third searched path: {msg}"
     );
   }
 

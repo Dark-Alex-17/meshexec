@@ -36,6 +36,8 @@ pub enum Commands {
     #[arg(long)]
     no_color: bool,
   },
+  /// Print the default config file path for this system
+  ConfigPath,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
