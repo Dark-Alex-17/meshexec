@@ -19,6 +19,12 @@ mesh, and get the output back — no internet required!
 This makes it ideal for managing remote devices in off-grid, decentralized, or IoT deployments where traditional network 
 access isn't available.
 
+## Screenshots
+
+![chat](./screenshots/meshexec-chat.png)
+![config](./screenshots/meshexec-config.png)
+![logs](./screenshots/meshexec-logs.png)
+
 ## Prerequisites
 
 - A [Meshtastic](https://meshtastic.org/) device connected via serial (USB)
