@@ -1,6 +1,6 @@
 [package]
 name = "meshexec"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Alex Clarke <alex.j.tusa@gmail.com>"]
 description = "Manage remote devices over the Meshtastic mesh. Define command aliases, execute them remotely via private channels, and get output back in chunks"
 keywords = ["meshtastic", "mesh-network", "remote-execution", "iot", "lora"]
