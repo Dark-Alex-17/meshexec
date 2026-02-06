@@ -3,6 +3,7 @@
 [![crates.io link](https://img.shields.io/crates/v/meshexec.svg)](https://crates.io/crates/meshexec)
 ![Release](https://img.shields.io/github/v/release/Dark-Alex-17/meshexec?color=%23c694ff)
 ![Crate.io downloads](https://img.shields.io/crates/d/meshexec?label=Crate%20downloads)
+![Docker pulls](https://img.shields.io/docker/pulls/darkalex17/meshexec?label=Docker%20downloads)
 [![GitHub Downloads](https://img.shields.io/github/downloads/Dark-Alex-17/meshexec/total.svg?label=GitHub%20downloads)](https://github.com/Dark-Alex-17/meshexec/releases)
 
 MeshExec lets you execute commands on remote serially-connected [Meshtastic](https://meshtastic.org/) nodes by listening for messages in a 
@@ -42,6 +43,22 @@ cargo install meshexec
 # If you encounter issues installing, try installing with '--locked'
 cargo install --locked meshexec
 ```
+
+### Docker
+Run MeshExec as a docker container by mounting your configuration directory file to `/root/.config/meshexec/`. For example:
+```shell
+docker run -d \
+  --name meshexec \
+  --device /dev/ttyUSB0:/dev/ttyUSB0 \  # Pass through the serial device (update this path as needed; should match path in config)
+  -v /home/aclarke/.config/meshexec:/root/.config/meshexec/:ro \
+  darkalex17/meshexec:latest
+```
+
+You can also clone this repo and run `just build-docker` to build a docker image locally and run it using the above command.
+
+Please note that you will need to create and populate your configuration file(s) first before starting the container. Otherwise, the container will fail to start.
+
+Be sure to also pass through the correct serial device path (e.g. `/dev/ttyUSB0`) that matches the `device` field in your configuration file.
 
 ### Homebrew (Mac and Linux)
 To install MeshExec from Homebrew, install the MeshExec tap. Then you'll be able to install MeshExec:

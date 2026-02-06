@@ -1,3 +1,6 @@
+VERSION := "latest"
+IMG_NAME := "darkalex17/meshexec"
+
 # List all recipes
 default:
     @just --list
@@ -23,3 +26,8 @@ default:
 [arg('build_type', pattern="debug|release")]
 @build build_type='debug':
 	@cargo build {{ if build_type == "release" { "--release" } else { "" } }}
+
+# Build the docker image
+[group: 'build']
+build-docker:
+    @DOCKER_BUILDKIT=1 docker build --rm -t {{IMG_NAME}}:{{VERSION}} .

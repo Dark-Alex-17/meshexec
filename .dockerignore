@@ -1,0 +1,12 @@
+target/
+.git/
+.github/
+*.log
+*.md
+!README.md
+screenshots/
+examples/
+.gitignore
+.cargo/
+justfile
+tags
