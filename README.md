@@ -256,6 +256,7 @@ Group commands organize subcommands under a namespace:
       args:
         - name: port
           help: The port number to check
+          default: "8080" # All default values must be strings; raw YAML types like boolean and integers are not supported for default values
       command: 'sudo lsof -i :${port}'
 ```
 
